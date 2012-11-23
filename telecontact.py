@@ -18,7 +18,11 @@ import urllib
 import urllib2
 import urlparse
 
+def to_utf(doc):
+    return doc.encode('latin-1').decode('utf-8')    
+
 url_base = "http://www.telecontact.ma/liens"
+url_base_search = "http://www.telecontact.ma/trouver/index.php?nxo=moteur&nxs=process&recherche=guidee"
 
 class TC(object):
     """
@@ -30,7 +34,7 @@ class TC(object):
             what = object of search
             where = location
     """
-    def __init__(self, pause=5.0, page=1, what="", where=""):
+    def __init__(self, pause=5.0, page=1, search=True, what="", where=""):
         """
             @type  pause: long
             @param url: not to burden the server
@@ -48,6 +52,7 @@ class TC(object):
         self.page = page        
         self.what = what
         self.where = where
+        self.search = search
         self.max = 0
     
     def is_max_set(self):
@@ -72,7 +77,13 @@ class TC(object):
         self.what = what
     
     def set_where(self, where):
-        self.where = where     
+        self.where = where   
+    
+    def set_search(self, search):
+        self.search = search
+    
+    def get_construct_url(self):        
+        return self.__url_contruction_search() if self.search else self.__url_contruction()
         
     # Returns a generator that yields URLs.
     def get_results(self, title_def):
@@ -83,15 +94,15 @@ class TC(object):
         #time.sleep(self.pause+(random.random()-0.5)*5)                        
     
         # Prepare the URL of the first request.
-        url_search = self.__url_contruction()
+        url_search = self.get_construct_url()
         print url_search
         # Request the TC Search results page.
         stat = True
         while stat:
             try:
                 html = self.__get_result(url_search)
-                # Parse the response and extract the summaries
-                soup = BeautifulSoup(html)
+                # Parse the response and extract the summaries                
+                soup = BeautifulSoup(html, from_encoding='latin-1')
                 if soup.findAll(text=re.compile("captcha")) != []:                    
                     print "Failed page "+self.get_page()+", captcha retrying"
                 else:
@@ -110,20 +121,26 @@ class TC(object):
         
         for table in soup.findAll("div", {"class": "drs"}):
             result = ""
-            try :                           
+            try :                                           
                 if table.findNext("div", {"class": "visuelResultat"}) is None:                    
                     name_spec_loc = table.findNext("span", {"id": "resultats_h3_span"}) 
-                    name_spec = name_spec_loc.findNext("h2", {"class": "h2_rs_st_pnl"})                    
-                    title = ' '.join(re.findall('\w+', name_spec.findNext("a",{"class": "moodalbox"}).string, re.UNICODE))
+                    name_spec = name_spec_loc.findNext("h2", {"class": "h2_rs_st_pnl"})
+                    if self.search:
+                        title_name = re.findall('\w+', to_utf(name_spec.string), re.UNICODE)
+                        title = title_name[-1]
+                        name = " ".join(title_name[:-1])
+                    else:                    
+                        title = ' '.join(re.findall('\w+', to_utf(name_spec.findNext("a",{"class": "moodalbox"}).string), re.UNICODE))
                     if title == title_def:
-                        name = ' '.join(re.findall('\w+', name_spec.string, re.UNICODE))
+                        if not self.search:
+                            name = ' '.join(re.findall('\w+', to_utf(name_spec.string), re.UNICODE))
                         loc = name_spec_loc.findNext("div", {"class": "adresse"}).findNext('span')
-                        address = loc.string                  
+                        address = to_utf(loc.string)                  
                         try:      
-                            quartier = ' '.join(re.findall('\w+', loc.findNextSibling(text=True), re.UNICODE)[1:])
+                            quartier = ' '.join(re.findall('\w+', to_utf(loc.findNextSibling(text=True)), re.UNICODE)[1:])
                         except:
                             quartier = ""
-                        postal_code = re.findall('\d+', loc.findNextSibling("span").string)[0]                    
+                        postal_code = re.findall('\d+',  to_utf(loc.findNextSibling("span").string))[0]                    
                         address_href = loc.findNext("a", {"class": "moodalbox"})['href']
                         try :
                             lng, lat = re.findall("-*\d+\.\d+", address_href)
@@ -138,13 +155,27 @@ class TC(object):
     
     def __url_contruction(self):
         """
-        Construct the search url
+        Construct the activity url
         """                                  
         url_search = url_base        
         # what          
         url_search += '/%(what)s' % {"what":self.what}
         # where
         url_search += '/%(where)s.php' % {"where":self.where}
+        #page
+        page = "&page=%(page)s" % {"page":self.page}        
+        url_search += page
+        return url_search    
+    
+    def __url_contruction_search(self):
+        """
+        Construct the search url
+        """                                      
+        url_search = url_base_search        
+        # what          
+        url_search += '&rubrique=%(what)s' % {"what":self.what}
+        # where
+        url_search += '&region=%(where)s' % {"where":self.where}
         #page
         page = "&page=%(page)s" % {"page":self.page}        
         url_search += page
@@ -166,8 +197,9 @@ class TC(object):
         @raise urllib2.HTTPError: An exception is raised on error.
         """
         request = urllib2.Request(url)
-        request.add_header('User-Agent',
-                           'Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.0)')        
+        request.add_header('User-Agent',                           
+                           'Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.2.10) Gecko/20100915\
+              Ubuntu/10.04 (lucid) Firefox/3.6.10')        
         response = urllib2.urlopen(request)        
         html = response.read()
         response.close()        
