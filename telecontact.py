@@ -100,7 +100,7 @@ class TC(object):
         stat = True
         while stat:
             try:
-                html = self.__get_result(url_search)
+                html = self._get_result(url_search)
                 # Parse the response and extract the summaries                
                 soup = BeautifulSoup(html, from_encoding='latin-1')
                 if soup.findAll(text=re.compile("captcha")) != []:                    
@@ -182,7 +182,7 @@ class TC(object):
         return url_search    
         
     # Request the given URL and return the response page, using the cookie jar.
-    def __get_result(self, url):
+    def _get_result(self, url):
         """
         Request the given URL and return the response page, using the cookie jar.
     
